@@ -1,10 +1,15 @@
 
+from multiprocessing.dummy import Process
 import os
 import numpy as np
 import torch
 import json
+# from multiprocessing import Process
+import time
 
-dataset_folder = '../data/'
+dataset_folder = 'data/'
+results_directory = "results/"
+
 files = os.listdir(dataset_folder)
 files = [f for f in files if f.endswith('.npz')]
 
@@ -45,7 +50,7 @@ preferred_parameters = {
 
 
 def save_results(results, id):
-    with open(f"../results/{id}.json", 'w') as f:
+    with open(f"results/{id}.json", 'w') as f:
         json.dump(results, f, indent=4)
 
 def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = False, id = 0):
@@ -72,7 +77,7 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
         Xtr = Xtr / 255.0
         Xts = Xts / 255.0
 
-
+        np.random.seed(id)
 
         n = Xtr.shape[0]
         n_val = int(n * validation_ratio)
@@ -80,10 +85,14 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
         val_indices = indices[:n_val]
         train_indices = indices[n_val:]
 
-        X_train_tensor = torch.tensor(Xtr[train_indices], dtype=torch.float32)
-        S_train_tensor = torch.tensor(Str[train_indices], dtype=torch.long)
-        X_val_tensor = torch.tensor(Xtr[val_indices], dtype=torch.float32)
-        S_val_tensor = torch.tensor(Str[val_indices], dtype=torch.long)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        X_train_tensor = torch.tensor(Xtr[train_indices], dtype=torch.float32).to(device)
+        S_train_tensor = torch.tensor(Str[train_indices], dtype=torch.long).to(device)
+        X_val_tensor = torch.tensor(Xtr[val_indices], dtype=torch.float32).to(device)
+        S_val_tensor = torch.tensor(Str[val_indices], dtype=torch.long).to(device)
+        Xts = torch.tensor(Xts, dtype=torch.float32).to(device)
+        Yts = torch.tensor(Yts, dtype=torch.long).to(device)
 
 
         #one-hot encoding
@@ -94,7 +103,7 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
 
         if use_transition_matrix:
             transition_matrix = transition_matrices[file]
-            transition_matrix_tensor = torch.tensor(transition_matrix, dtype=torch.float32, requires_grad=False)
+            transition_matrix_tensor = torch.tensor(transition_matrix, dtype=torch.float32, requires_grad=False).to(device)
             
             
 
@@ -110,6 +119,7 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
         layers.append(torch.nn.Linear(input_size, 3))
         layers.append(torch.nn.Softmax(dim=1))
         model = torch.nn.Sequential(*layers)
+        model = model.to(device)
 
         criterion = torch.nn.CrossEntropyLoss()
         # criterion = torch.nn.MSELoss()
@@ -143,11 +153,11 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
                 val_loss = criterion(val_outputs, S_val_tensor)
                 _, predicted = torch.max(val_outputs, 1)
                 accuracy = (predicted == S_val_tensor.argmax(dim=1)).float().mean()
-                
-                test_outputs = model(torch.tensor(Xts, dtype=torch.float32))
+
+                test_outputs = model(Xts)
                 _, test_predicted = torch.max(test_outputs, 1)
-                test_accuracy = (test_predicted.numpy() == Yts).mean()
-                test_accuracies.append(test_accuracy)
+                test_accuracy = (test_predicted == Yts).to(torch.float32).mean()
+                test_accuracies.append(test_accuracy.item())
                 
             train_losses.append(loss.item())
             val_losses.append(val_loss.item())
@@ -155,7 +165,7 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
             if (epoch + 1) % 10 == 0 or epoch == 0:
                 print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item():.4f}, Val Loss: {val_loss.item():.4f}, Val Acc: {accuracy.item():.4f}, Test Acc: {test_accuracy:.4f}")
 
-        results[file] = test_accuracies[-1]
+        results[file] = {'test_accuracy': test_accuracies[-1]}
         
         if predict_transition_matrix:
             
@@ -164,8 +174,8 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
                 y_pred = model(X_train_tensor)
                 _, y_pred_classes = torch.max(y_pred, 1)
 
-            y_pred = y_pred.numpy()
-            y_pred_classes = y_pred_classes.numpy()
+            y_pred = y_pred.cpu().numpy()
+            y_pred_classes = y_pred_classes.cpu().numpy()
             matrix = np.zeros((3, 3))
             for column in range(3):
 
@@ -174,6 +184,71 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
                 # print(highest_confidence_pred_index, highest_confidence_pred)
                 matrix[column] = highest_confidence_pred
 
+            matrix = matrix.tolist()
             results[file]['predicted_transition_matrix'] = matrix
-
+    save_results(results, id)
     return results
+
+def analyze_results():
+
+    result_files = os.listdir(results_directory)
+    result_files = [f for f in result_files if f.endswith('.json')]
+
+    all_results = {}
+    for file in result_files:
+        with open(os.path.join(results_directory, file), 'r') as f:
+            result = json.load(f)
+            all_results[file] = result
+
+
+    datasets = list(all_results[result_files[0]].keys())
+    keys = all_results[result_files[0]][datasets[0]].keys()
+
+    final_results = {}
+    for dataset in datasets:
+        for key in keys:
+            values = []
+            is_matrix = False
+            for experiment in result_files:
+                value = all_results[experiment][dataset][key]
+                if type(value) == list:
+                    value = np.array(value)
+                    is_matrix = True
+                values.append(value)
+
+            if is_matrix:
+                values = np.array(values)
+                mean_value = np.mean(values, axis=0).tolist()
+                std_value = np.std(values, axis=0).tolist()
+            else:
+                mean_value = np.mean(values)
+                std_value = np.std(values)
+            if dataset not in final_results:
+                final_results[dataset] = {}
+            final_results[dataset][key] = {
+                'mean': mean_value,
+                'std': std_value
+            }
+    with open("summary.json", 'w') as f:
+        json.dump(final_results, f, indent=4)
+
+    return final_results
+
+def run_all_experiments():
+
+    num_experiments = 4
+
+    os.makedirs("results/", exist_ok=True)
+
+    for i in range(num_experiments):
+        run_single_experiment(predict_transition_matrix=True, id=i)
+
+
+
+if __name__ == "__main__":
+
+    start = time.time()
+    # run_all_experiments()
+    analyze_results()
+    end = time.time()
+    print(f"Total time taken: {end - start:.2f} seconds")
