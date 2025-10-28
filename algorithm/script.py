@@ -53,7 +53,8 @@ def save_results(results, id):
     with open(f"results/{id}.json", 'w') as f:
         json.dump(results, f, indent=4)
 
-def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = False, id = 0):
+def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = False,
+                          id = 0, method='forward'):
     
     results = {}
     
@@ -186,53 +187,55 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
 
             matrix = matrix.tolist()
             results[file]['predicted_transition_matrix'] = matrix
-    save_results(results, id)
+    save_results(results, f"{id}_{method}")
     return results
 
 def analyze_results():
 
-    result_files = os.listdir(results_directory)
-    result_files = [f for f in result_files if f.endswith('.json')]
+    all_result_files = os.listdir(results_directory)
+    all_result_files = [f for f in all_result_files if f.endswith('.json')]
+    methods = set([i.split('_')[1].split('.')[0] for i in all_result_files])
 
-    all_results = {}
-    for file in result_files:
-        with open(os.path.join(results_directory, file), 'r') as f:
-            result = json.load(f)
-            all_results[file] = result
+    for method in methods:
+        all_results = {}
+        result_files = [f for f in all_result_files if f'_{method}' in f]
+        for file in result_files:
+            with open(os.path.join(results_directory, file), 'r') as f:
+                result = json.load(f)
+                all_results[file] = result
 
 
-    datasets = list(all_results[result_files[0]].keys())
-    keys = all_results[result_files[0]][datasets[0]].keys()
+        datasets = list(all_results[result_files[0]].keys())
+        keys = all_results[result_files[0]][datasets[0]].keys()
 
-    final_results = {}
-    for dataset in datasets:
-        for key in keys:
-            values = []
-            is_matrix = False
-            for experiment in result_files:
-                value = all_results[experiment][dataset][key]
-                if type(value) == list:
-                    value = np.array(value)
-                    is_matrix = True
-                values.append(value)
+        final_results = {}
+        for dataset in datasets:
+            for key in keys:
+                values = []
+                is_matrix = False
+                for experiment in result_files:
+                    value = all_results[experiment][dataset][key]
+                    if type(value) == list:
+                        value = np.array(value)
+                        is_matrix = True
+                    values.append(value)
 
-            if is_matrix:
-                values = np.array(values)
-                mean_value = np.mean(values, axis=0).tolist()
-                std_value = np.std(values, axis=0).tolist()
-            else:
-                mean_value = np.mean(values)
-                std_value = np.std(values)
-            if dataset not in final_results:
-                final_results[dataset] = {}
-            final_results[dataset][key] = {
-                'mean': mean_value,
-                'std': std_value
-            }
-    with open("summary.json", 'w') as f:
-        json.dump(final_results, f, indent=4)
+                if is_matrix:
+                    values = np.array(values)
+                    mean_value = np.mean(values, axis=0).tolist()
+                    std_value = np.std(values, axis=0).tolist()
+                else:
+                    mean_value = np.mean(values)
+                    std_value = np.std(values)
+                if dataset not in final_results:
+                    final_results[dataset] = {}
+                final_results[dataset][key] = {
+                    'mean': mean_value,
+                    'std': std_value
+                }
+        with open(f"summary_{method}.json", 'w') as f:
+            json.dump(final_results, f, indent=4)
 
-    return final_results
 
 def run_all_experiments():
 
@@ -241,14 +244,15 @@ def run_all_experiments():
     os.makedirs("results/", exist_ok=True)
 
     for i in range(num_experiments):
-        run_single_experiment(predict_transition_matrix=True, id=i)
-
+        run_single_experiment(predict_transition_matrix=True, id=i, method='backward')
+        run_single_experiment(predict_transition_matrix=True, id=i, method='forward')
 
 
 if __name__ == "__main__":
 
     start = time.time()
-    # run_all_experiments()
+    os.makedirs("results/", exist_ok=True)
+    run_all_experiments()
     analyze_results()
     end = time.time()
     print(f"Total time taken: {end - start:.2f} seconds")
