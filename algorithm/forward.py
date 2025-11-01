@@ -1,5 +1,5 @@
 
-from multiprocessing.dummy import Process
+import shutil
 import os
 import numpy as np
 import torch
@@ -49,12 +49,12 @@ preferred_parameters = {
 }
 
 
-def save_results(results, id):
-    with open(f"results/{id}.json", 'w') as f:
+def save_results(results, id, OUTPUT_PATH="results/"):
+    with open(f"{OUTPUT_PATH}/{id}.json", 'w') as f:
         json.dump(results, f, indent=4)
 
 def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = False,
-                          id = 0, method='forward'):
+                          id = 0, method='forward', OUTPUT_PATH="results/"):
     
     results = {}
     
@@ -187,12 +187,15 @@ def run_single_experiment(validation_ratio = 0.2, predict_transition_matrix = Fa
 
             matrix = matrix.tolist()
             results[file]['predicted_transition_matrix'] = matrix
-    save_results(results, f"{id}_{method}")
+    os.makedirs(f"{OUTPUT_PATH}/{method}", exist_ok=True)
+    save_results(results, f"{method}/{id}_{method}", OUTPUT_PATH=OUTPUT_PATH)
     return results
 
-def analyze_results():
+def analyze_results(output_path="results/"):
+    
+    INDOOR_RESULTS_PATH = f"{output_path}/forward"
 
-    all_result_files = os.listdir(results_directory)
+    all_result_files = os.listdir(INDOOR_RESULTS_PATH)
     all_result_files = [f for f in all_result_files if f.endswith('.json')]
     methods = set([i.split('_')[1].split('.')[0] for i in all_result_files])
 
@@ -200,7 +203,7 @@ def analyze_results():
         all_results = {}
         result_files = [f for f in all_result_files if f'_{method}' in f]
         for file in result_files:
-            with open(os.path.join(results_directory, file), 'r') as f:
+            with open(os.path.join(INDOOR_RESULTS_PATH, file), 'r') as f:
                 result = json.load(f)
                 all_results[file] = result
 
@@ -230,29 +233,27 @@ def analyze_results():
                 if dataset not in final_results:
                     final_results[dataset] = {}
                 final_results[dataset][key] = {
-                    'mean': mean_value,
-                    'std': std_value
+                    'mean': mean_value*100 if not is_matrix else mean_value,
+                    'std': std_value*100 if not is_matrix else std_value
                 }
-        with open(f"summary_{method}.json", 'w') as f:
+        with open(f"{output_path}/summary_{method}.json", 'w') as f:
             json.dump(final_results, f, indent=4)
 
 
-def run_all_experiments():
+def run_forward_experiments(num_runs=10, output_path="results/"):
 
-    num_experiments = 4
 
-    os.makedirs("results/", exist_ok=True)
+    os.makedirs(output_path, exist_ok=True)
 
-    for i in range(num_experiments):
-        run_single_experiment(predict_transition_matrix=True, id=i, method='backward')
+    for i in range(num_runs):
         run_single_experiment(predict_transition_matrix=True, id=i, method='forward')
-
+    analyze_results(output_path=output_path)
+    shutil.rmtree(f"{output_path}/forward", ignore_errors=True)
 
 if __name__ == "__main__":
 
     start = time.time()
-    os.makedirs("results/", exist_ok=True)
-    run_all_experiments()
-    analyze_results()
+    run_forward_experiments(num_runs=2, output_path="results/")
+    # analyze_results(output_path="results/")
     end = time.time()
     print(f"Total time taken: {end - start:.2f} seconds")

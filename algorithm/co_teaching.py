@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import json
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, SubsetRandomSampler
-
+import os
 
 def load_datasets(base_path='data/'):
     """
@@ -354,7 +354,7 @@ def run_coteaching_cv(dataset, n_splits=5, batch_size=128, num_classes=3,
 
 
 
-def run_coteaching_experiments(num_runs=10, predict_transition=False):
+def run_coteaching_experiments(num_runs=10, predict_transition=True, output_path="results/"):
     """
     Run Co-teaching experiments on multiple datasets with cross-validation
     """
@@ -466,8 +466,8 @@ def run_coteaching_experiments(num_runs=10, predict_transition=False):
         if predict_transition and transition_summary is not None:
             summary_results[file]["predicted_transition_matrix"] = transition_summary
 
-    with open("summary_coteaching.json", 'w') as f:
+    with open(os.path.join(output_path, "summary_coteaching.json"), 'w') as f:
         json.dump(summary_results, f, indent=4)
 
 if __name__ == "__main__":
-    run_coteaching_experiments(num_runs=2, predict_transition=True)
+    run_coteaching_experiments(num_runs=2, predict_transition=True, output_path="results/")
