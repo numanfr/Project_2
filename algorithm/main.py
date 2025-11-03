@@ -3,11 +3,11 @@ from co_teaching import run_coteaching_experiments
 from forward import run_forward_experiments
 from create_charts import create_charts
 
-RUN_EXPERIMENTS = True
-NUM_RUNS = 3
+RUN_EXPERIMENTS = False
+NUM_RUNS = 10
 OUTPUT_PATH = "results/"
 
-CREATE_CHARTS = False
+CREATE_CHARTS = True
 
 
 if __name__ == "__main__":

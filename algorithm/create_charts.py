@@ -21,7 +21,7 @@ transition_matrices = {
 }
 
 
-def plot_bar_charts():
+def plot_bar_charts(test_accuracies, test_stds):
     for dataset in test_accuracies:
         
         #plot bar charts for test accuracies
@@ -36,11 +36,11 @@ def plot_bar_charts():
         plt.title(f'Test Accuracies for {dataset}')
         plt.tight_layout()
         plt.savefig(os.path.join(chart_dir, f"{dataset}_test_accuracies.png"))
-        plt.show()
+        # plt.show()
 
 
 
-def print_transition_matrices():
+def print_transition_matrices(test_t_matrices):
     for dataset in test_t_matrices:
         print(f"Dataset: {dataset}")
         is_cifar = dataset not in transition_matrices
@@ -80,7 +80,7 @@ def print_transition_matrices():
         plt.suptitle(f'Transition Matrices for {dataset}', fontsize=16)
         plt.tight_layout()
         plt.savefig(os.path.join(chart_dir, f"{dataset}_transition_matrices.png"))
-        plt.show()
+        # plt.show()
 
 
 
@@ -123,8 +123,8 @@ def create_charts():
             except KeyError:
                 continue
 
-    plot_bar_charts()
-    print_transition_matrices()
+    plot_bar_charts(test_accuracies, test_stds)
+    print_transition_matrices(test_t_matrices)
 
 if __name__ == "__main__":
     create_charts()
